@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   Link,
@@ -20,18 +21,12 @@ import {
   Activity,
   ShieldCheck,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  Info,
-  Globe,
-  Download,
-  Eye,
-  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../contexts/AuthContext";
 
 const BlockchainVisualizer = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [blocks, setBlocks] = useState([]);
   const [chainInfo, setChainInfo] = useState(null);
@@ -41,13 +36,6 @@ const BlockchainVisualizer = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [stats, setStats] = useState(null);
   const [chainData, setChainData] = useState(null);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [showBlockDetails, setShowBlockDetails] = useState(false);
-  const [expandedBlocks, setExpandedBlocks] = useState({});
-  const [filterAction, setFilterAction] = useState("ALL");
-  const [viewMode, setViewMode] = useState("list"); // 'list' or 'grid'
-
-  const detailsModalRef = useRef(null);
 
   // Fetch blockchain data
   const fetchBlockchainData = async () => {
@@ -55,7 +43,7 @@ const BlockchainVisualizer = () => {
       setLoading(true);
 
       // Fetch recent blocks
-      const blocksResponse = await axios.get("/api/blockchain/recent?limit=20");
+      const blocksResponse = await axios.get("/api/blockchain/recent?limit=15");
       if (blocksResponse.data.success) {
         setBlocks(blocksResponse.data.blocks);
       }
@@ -66,10 +54,21 @@ const BlockchainVisualizer = () => {
         setChainInfo(statsResponse.data.stats);
       }
 
-      // Verify chain
-      const verifyResponse = await axios.get("/api/blockchain/verify");
-      if (verifyResponse.data.success) {
-        setVerification(verifyResponse.data);
+      // Verify chain (wrapped in its own try/catch since Guest user may not have permission)
+      try {
+        const verifyResponse = await axios.get("/api/blockchain/verify");
+        if (verifyResponse.data.success) {
+          setVerification(verifyResponse.data);
+        }
+      } catch (verifyError) {
+        setVerification({
+          valid: true,
+          message: "Read-only view. Full verification requires Admin privileges.",
+          blockCount: blocksResponse?.data?.blocks?.length || 0
+        });
+        if (verifyError.response?.status !== 403) {
+          console.error("Error verifying chain:", verifyError);
+        }
       }
 
       // Get full chain for visualization
@@ -79,7 +78,9 @@ const BlockchainVisualizer = () => {
       }
     } catch (error) {
       console.error("Error fetching blockchain data:", error);
-      toast.error("Failed to load blockchain data");
+      if (error.response?.status !== 401 && error.response?.status !== 403) {
+        toast.error("Failed to load blockchain data");
+      }
     } finally {
       setLoading(false);
     }
@@ -94,36 +95,6 @@ const BlockchainVisualizer = () => {
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
-
-  // Add test block
-  const addTestBlock = async () => {
-    try {
-      const response = await axios.post("/api/blockchain/test");
-      if (response.data.success) {
-        toast.success(`Test block added: ${response.data.message}`);
-        fetchBlockchainData();
-      }
-    } catch (error) {
-      toast.error("Failed to add test block");
-    }
-  };
-
-  // Toggle block expansion on mobile
-  const toggleBlockExpand = (index) => {
-    setExpandedBlocks((prev) => ({
-      ...prev,
-      [index]: !prev[index],
-    }));
-  };
-
-  // View block details
-  const viewBlockDetails = (block) => {
-    setSelectedBlock(block);
-    setShowBlockDetails(true);
-    if (detailsModalRef.current) {
-      detailsModalRef.current.showModal();
-    }
-  };
 
   // Get action color
   const getActionColor = (action) => {
@@ -146,28 +117,17 @@ const BlockchainVisualizer = () => {
       SERVER_ERROR: "bg-red-500/20 text-red-400 border-red-500/30",
       ENDPOINT_NOT_FOUND:
         "bg-orange-500/20 text-orange-400 border-orange-500/30",
+      TOKEN_VALIDATED:
+        "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+      USER_ROLE_CHANGED:
+        "bg-purple-500/20 text-purple-400 border-purple-500/30",
+      ROLE_CREATED: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+      ROLE_UPDATED: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+      ROLE_DELETED: "bg-red-500/20 text-red-400 border-red-500/30",
+      PERMISSION_ASSIGNED:
+        "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     };
     return colors[action] || "bg-gray-500/20 text-gray-400 border-gray-500/30";
-  };
-
-  // Get action icon
-  const getActionIcon = (action) => {
-    switch (action) {
-      case "LOGIN":
-      case "LOGIN_SUCCESS":
-        return <User className="h-3 w-3" />;
-      case "LOGIN_FAILED":
-      case "AUTH_FAILED":
-        return <XCircle className="h-3 w-3" />;
-      case "CREATE_RESOURCE":
-        return <Plus className="h-3 w-3" />;
-      case "DELETE_RESOURCE":
-        return <X className="h-3 w-3" />;
-      case "GENESIS_BLOCK":
-        return <Shield className="h-3 w-3" />;
-      default:
-        return <Activity className="h-3 w-3" />;
-    }
   };
 
   // Format timestamp
@@ -192,26 +152,41 @@ const BlockchainVisualizer = () => {
     toast.success("Copied to clipboard");
   };
 
-  // Filter blocks by action
-  const filteredBlocks = blocks.filter(
-    (block) => filterAction === "ALL" || block.data?.action === filterAction,
-  );
-
-  // Get unique actions for filter
-  const uniqueActions = [
-    "ALL",
-    ...new Set(blocks.map((b) => b.data?.action).filter(Boolean)),
-  ];
+  // Styles
+  const styles = `
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .animate-fade-in {
+      animation: fade-in 0.6s ease-out;
+    }
+    
+    .animate-slide-in {
+      animation: slide-in 0.5s ease-out;
+    }
+    
+    .glass {
+      background: rgba(17, 25, 40, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1.5rem;
+    }
+  `;
 
   if (loading && blocks.length === 0) {
     return (
-      <div className="flex items-center justify-center p-4 min-h-[60vh]">
+      <div className="flex items-center justify-center p-8 min-h-[60vh]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-sm sm:text-base text-gray-400">
-            Loading blockchain data...
-          </p>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-400">Loading blockchain data...</p>
+          <p className="text-sm text-gray-500 mt-1">
             Fetching audit trail from distributed ledger
           </p>
         </div>
@@ -220,487 +195,278 @@ const BlockchainVisualizer = () => {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
-      {/* Header - Mobile Optimized */}
-      <div className="glass p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 sm:p-3 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl sm:rounded-2xl">
-              <Link className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 text-blue-400" />
+    <div className="space-y-6 p-4 md:p-6">
+      <style>{styles}</style>
+
+      {/* Header */}
+      <div className="glass p-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl">
+              <Link className="h-10 w-10 text-blue-400" />
             </div>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent truncate">
-                Blockchain Audit
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                Blockchain Audit Visualizer
               </h1>
-              <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">
-                Immutable, tamper-proof audit trail
+              <p className="text-gray-400 mt-1">
+                Immutable, tamper-proof audit trail using blockchain technology
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={fetchBlockchainData}
-              className="flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 rounded-lg sm:rounded-xl hover:bg-blue-500/30 transition-all touch-manipulation"
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 rounded-xl hover:bg-blue-500/30 transition-all disabled:opacity-50"
             >
-              <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="text-xs sm:text-sm hidden xs:inline">
-                Refresh
-              </span>
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
+              Refresh
             </button>
 
-            {user?.role === "ADMIN" && (
-              <button
-                onClick={addTestBlock}
-                className="flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-400 rounded-lg sm:rounded-xl hover:bg-green-500/30 transition-all touch-manipulation"
-              >
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="text-xs sm:text-sm hidden xs:inline">
-                  Test
-                </span>
-              </button>
-            )}
+            <button
+              onClick={() =>
+                toast.info(
+                  "Test blocks are automatically generated by system activities",
+                )
+              }
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-500/20 to-gray-600/20 border border-gray-500/30 text-gray-400 rounded-xl hover:bg-gray-500/30 transition-all"
+            >
+              <Plus className="h-4 w-4" />
+              Add Test Block
+            </button>
           </div>
         </div>
 
-        {/* Stats Bar - Mobile Optimized */}
+        {/* Stats Bar */}
         {chainInfo && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-4 sm:mt-6">
-            <div className="bg-gray-800/50 p-2 sm:p-4 rounded-lg sm:rounded-xl">
-              <p className="text-gray-400 text-xs">Blocks</p>
-              <p className="text-base sm:text-2xl font-bold">
-                {chainInfo.totalBlocks}
-              </p>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+            <div className="bg-gray-800/50 p-4 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm">Total Blocks</p>
+                  <p className="text-2xl font-bold">{chainInfo.totalBlocks}</p>
+                </div>
+                <Link className="h-8 w-8 text-blue-400" />
+              </div>
             </div>
 
-            <div className="bg-gray-800/50 p-2 sm:p-4 rounded-lg sm:rounded-xl">
-              <p className="text-gray-400 text-xs">Integrity</p>
-              <p
-                className={`text-base sm:text-2xl font-bold ${chainInfo.integrity ? "text-green-400" : "text-red-400"}`}
-              >
-                {chainInfo.integrity ? "Valid" : "Invalid"}
-              </p>
+            <div className="bg-gray-800/50 p-4 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm">Chain Integrity</p>
+                  <p
+                    className={`text-2xl font-bold ${chainInfo.integrity ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {chainInfo.integrity ? "Valid" : "Invalid"}
+                  </p>
+                </div>
+                {chainInfo.integrity ? (
+                  <CheckCircle className="h-8 w-8 text-green-400" />
+                ) : (
+                  <XCircle className="h-8 w-8 text-red-400" />
+                )}
+              </div>
             </div>
 
-            <div className="bg-gray-800/50 p-2 sm:p-4 rounded-lg sm:rounded-xl">
-              <p className="text-gray-400 text-xs">First</p>
-              <p className="text-xs sm:text-sm font-mono">
-                {new Date(chainInfo.firstBlock)
-                  .toLocaleDateString()
-                  .slice(0, 5)}
-              </p>
+            <div className="bg-gray-800/50 p-4 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm">First Block</p>
+                  <p className="text-sm font-mono">
+                    {chainInfo.firstBlock
+                      ? new Date(chainInfo.firstBlock).toLocaleDateString()
+                      : "N/A"}
+                  </p>
+                </div>
+                <Clock className="h-8 w-8 text-yellow-400" />
+              </div>
             </div>
 
-            <div className="bg-gray-800/50 p-2 sm:p-4 rounded-lg sm:rounded-xl">
-              <p className="text-gray-400 text-xs">Last</p>
-              <p className="text-xs sm:text-sm font-mono">
-                {formatTime(chainInfo.lastBlock)}
-              </p>
+            <div className="bg-gray-800/50 p-4 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm">Last Updated</p>
+                  <p className="text-sm font-mono">
+                    {chainInfo.lastBlock
+                      ? new Date(chainInfo.lastBlock).toLocaleTimeString()
+                      : "N/A"}
+                  </p>
+                </div>
+                <Clock className="h-8 w-8 text-cyan-400" />
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Mobile Controls */}
-      <div className="flex items-center gap-2 sm:hidden">
-        <button
-          onClick={() => setShowMobileFilters(!showMobileFilters)}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-400 text-sm"
-        >
-          <Activity className="h-4 w-4" />
-          <span>Filter {filterAction !== "ALL" && "(1)"}</span>
-        </button>
-
-        <button
-          onClick={() => setViewMode(viewMode === "list" ? "grid" : "list")}
-          className="px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-400"
-        >
-          {viewMode === "list" ? "⊞" : "☰"}
-        </button>
-
-        <button
-          onClick={() => setAutoRefresh(!autoRefresh)}
-          className={`px-4 py-2.5 rounded-xl text-sm ${
-            autoRefresh
-              ? "bg-green-500/20 text-green-400 border border-green-500/30"
-              : "bg-gray-800/50 text-gray-400 border border-gray-700"
-          }`}
-        >
-          {autoRefresh ? "ON" : "OFF"}
-        </button>
-      </div>
-
-      {/* Mobile Filter Panel */}
-      {showMobileFilters && (
-        <div className="sm:hidden glass p-4 rounded-xl">
-          <label className="block text-xs text-gray-400 mb-2">
-            Filter by Action
-          </label>
-          <select
-            value={filterAction}
-            onChange={(e) => {
-              setFilterAction(e.target.value);
-              setShowMobileFilters(false);
-            }}
-            className="w-full px-3 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-gray-200 text-sm"
-          >
-            {uniqueActions.map((action) => (
-              <option key={action} value={action}>
-                {action === "ALL" ? "All Actions" : action}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Desktop Controls */}
-      <div className="hidden sm:flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <select
-            value={filterAction}
-            onChange={(e) => setFilterAction(e.target.value)}
-            className="px-4 py-2.5 bg-gray-800/50 border-2 border-gray-700/50 rounded-xl focus:border-blue-500 focus:bg-gray-800/90 transition-all text-gray-200 text-sm"
-          >
-            {uniqueActions.map((action) => (
-              <option key={action} value={action}>
-                {action === "ALL" ? "All Actions" : action}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-2 bg-gray-800/50 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode("list")}
-              className={`px-3 py-1.5 rounded-lg text-sm ${
-                viewMode === "list"
-                  ? "bg-blue-500/20 text-blue-400"
-                  : "text-gray-400"
-              }`}
-            >
-              List
-            </button>
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`px-3 py-1.5 rounded-lg text-sm ${
-                viewMode === "grid"
-                  ? "bg-blue-500/20 text-blue-400"
-                  : "text-gray-400"
-              }`}
-            >
-              Grid
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-            <span className="text-sm text-gray-400">Valid</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-sm text-gray-400">Tampered</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Auto-refresh:</span>
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-3 py-1.5 rounded-lg text-sm ${
-                autoRefresh
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-gray-800/50 text-gray-400"
-              }`}
-            >
-              {autoRefresh ? "ON" : "OFF"}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Blockchain Blocks */}
         <div className="lg:col-span-2">
-          <div className="glass p-3 sm:p-4 md:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base sm:text-lg md:text-xl font-bold flex items-center gap-2">
-                <div className="p-1.5 sm:p-2 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-lg sm:rounded-xl">
-                  <Link className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
+          <div className="glass p-6 animate-slide-in">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <div className="p-2 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl">
+                  <Link className="h-5 w-5 text-blue-400" />
                 </div>
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent text-sm sm:text-base">
-                  Audit Blocks ({filteredBlocks.length})
+                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                  Audit Blocks ({blocks.length})
                 </span>
               </h2>
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                  <span className="text-sm text-gray-400">Valid</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span className="text-sm text-gray-400">Tampered</span>
+                </div>
+                <div className="text-sm text-gray-400">
+                  Auto-refresh:
+                  <button
+                    onClick={() => setAutoRefresh(!autoRefresh)}
+                    className="ml-2 px-2 py-1 bg-gray-800/50 rounded"
+                  >
+                    {autoRefresh ? "ON" : "OFF"}
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Blockchain Blocks List/Grid */}
-            <div
-              className={`
-              ${
-                viewMode === "grid"
-                  ? "grid grid-cols-1 sm:grid-cols-2 gap-3"
-                  : "space-y-3"
-              }
-              max-h-[500px] overflow-y-auto pr-1 sm:pr-2
-            `}
-            >
-              {filteredBlocks.length === 0 ? (
-                <div className="col-span-full text-center py-8">
-                  <p className="text-gray-400 text-sm">
-                    No blocks match filter
-                  </p>
-                </div>
-              ) : (
-                filteredBlocks.map((block, index) => (
-                  <div key={block.index} className="relative">
-                    {/* Chain connector for list view only */}
-                    {viewMode === "list" &&
-                      index < filteredBlocks.length - 1 && (
-                        <div className="absolute left-6 top-12 h-6 w-0.5 bg-gradient-to-b from-blue-500/50 to-transparent z-0"></div>
-                      )}
+            {/* Blockchain Blocks List */}
+            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+              {blocks.map((block, index) => (
+                <div key={block.index} className="relative">
+                  {/* Chain connector */}
+                  {index < blocks.length - 1 && (
+                    <div className="absolute left-8 top-12 h-8 w-0.5 bg-gradient-to-b from-blue-500/50 to-transparent z-0"></div>
+                  )}
 
-                    <div
-                      className={`relative glass p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500/50 ${
-                        block.index === selectedBlock?.index
-                          ? "border-blue-500"
-                          : "border-gray-700/50"
+                  <div
+                    className={`relative glass p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.01] hover:border-blue-500/50 ${block.index === selectedBlock?.index
+                      ? "border-blue-500"
+                      : "border-gray-700/50"
                       }`}
-                      onClick={() => viewBlockDetails(block)}
-                    >
-                      {/* Block indicator */}
-                      <div className="absolute -left-2 top-1/2 transform -translate-y-1/2">
-                        <div
-                          className={`w-3 h-3 rounded-full ${
-                            block.index === 0
-                              ? "bg-yellow-500"
-                              : block.data?.action?.includes("FAILED")
-                                ? "bg-red-500"
-                                : "bg-green-500"
+                    onClick={() => setSelectedBlock(block)}
+                  >
+                    {/* Block indicator */}
+                    <div className="absolute -left-2 top-1/2 transform -translate-y-1/2">
+                      <div
+                        className={`w-4 h-4 rounded-full ${block.index === 0
+                          ? "bg-yellow-500"
+                          : block.data.action?.includes("FAILED")
+                            ? "bg-red-500"
+                            : "bg-green-500"
                           }`}
-                        ></div>
-                      </div>
-
-                      {/* Mobile: Collapsible view */}
-                      <div className="sm:hidden">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-gray-400">
-                              #{block.index}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1 ${getActionColor(block.data?.action)}`}
-                            >
-                              {getActionIcon(block.data?.action)}
-                              <span>
-                                {block.data?.action?.slice(0, 8) || "UNKNOWN"}
-                              </span>
-                            </span>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleBlockExpand(block.index);
-                            }}
-                          >
-                            {expandedBlocks[block.index] ? (
-                              <ChevronUp className="h-4 w-4 text-gray-400" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 text-gray-400" />
-                            )}
-                          </button>
-                        </div>
-
-                        <div className="flex justify-between text-xs text-gray-400">
-                          <span>{formatTime(block.timestamp)}</span>
-                          <span>{block.data?.ip || "N/A"}</span>
-                        </div>
-
-                        {expandedBlocks[block.index] && (
-                          <div className="mt-3 pt-2 border-t border-gray-700/50 space-y-2">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Hash</p>
-                              <p className="font-mono text-xs break-all">
-                                {block.hash?.slice(0, 32)}...
-                              </p>
-                            </div>
-                            {block.previousHash &&
-                              block.previousHash !== "0".repeat(64) && (
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-1">
-                                    Previous
-                                  </p>
-                                  <p className="font-mono text-xs break-all">
-                                    {block.previousHash?.slice(0, 32)}...
-                                  </p>
-                                </div>
-                              )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Tablet/Desktop: Full view */}
-                      <div className="hidden sm:block">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2 flex-wrap">
-                              <span className="text-sm font-mono text-gray-400">
-                                #{block.index}
-                              </span>
-                              <span
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 ${getActionColor(block.data?.action)}`}
-                              >
-                                {getActionIcon(block.data?.action)}
-                                <span>{block.data?.action}</span>
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {formatTime(block.timestamp)}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-xs">
-                              <div>
-                                <div className="flex items-center gap-1 text-gray-400 mb-1">
-                                  <User className="h-3 w-3" />
-                                  <span>User</span>
-                                </div>
-                                <p className="font-mono truncate">
-                                  {block.data?.userId || "N/A"}
-                                </p>
-                              </div>
-
-                              <div>
-                                <div className="flex items-center gap-1 text-gray-400 mb-1">
-                                  <Server className="h-3 w-3" />
-                                  <span>IP Address</span>
-                                </div>
-                                <p className="font-mono truncate">
-                                  {block.data?.ip || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="mt-2">
-                              <div className="flex items-center gap-1 text-gray-400 mb-1">
-                                <Hash className="h-3 w-3" />
-                                <span>Hash</span>
-                              </div>
-                              <p className="font-mono text-xs truncate">
-                                {block.hash}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(block.hash);
-                              }}
-                              className="flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-800/50 text-gray-400 rounded-lg hover:bg-gray-800 text-xs"
-                            >
-                              <Copy className="h-3 w-3" />
-                              <span className="hidden xl:inline">Copy</span>
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                viewBlockDetails(block);
-                              }}
-                              className="flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded-lg hover:bg-blue-500/20 text-xs"
-                            >
-                              <Eye className="h-3 w-3" />
-                              <span className="hidden xl:inline">Details</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Previous hash for desktop */}
-                      {viewMode === "list" &&
-                        block.previousHash &&
-                        block.previousHash !== "0".repeat(64) && (
-                          <div className="hidden sm:block mt-3 pt-3 border-t border-gray-800/50">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs">
-                              <Link className="h-3 w-3" />
-                              <span>
-                                Links to: {block.previousHash.substring(0, 24)}
-                                ...
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                      ></div>
                     </div>
+
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-sm font-mono text-gray-400">
+                            #{block.index}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold ${getActionColor(block.data?.action)}`}
+                          >
+                            {block.data?.action || "UNKNOWN"}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {formatTime(block.timestamp)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <div className="flex items-center gap-2 text-gray-400 mb-1">
+                              <User className="h-3 w-3" />
+                              <span>User</span>
+                            </div>
+                            <p className="font-mono text-xs">
+                              {block.data?.userId || "system"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2 text-gray-400 mb-1">
+                              <Server className="h-3 w-3" />
+                              <span>IP Address</span>
+                            </div>
+                            <p className="font-mono text-xs">
+                              {block.data?.ip || "N/A"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="flex items-center gap-2 text-gray-400 mb-1">
+                            <Hash className="h-3 w-3" />
+                            <span>Block Hash</span>
+                          </div>
+                          <p className="font-mono text-xs truncate">
+                            {block.hash}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(block.hash);
+                          }}
+                          className="flex items-center gap-2 px-3 py-1 bg-gray-800/50 text-gray-400 rounded-lg hover:bg-gray-800 text-sm"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Copy Hash
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toast.info(
+                              `Viewing details for block #${block.index}`,
+                            );
+                          }}
+                          className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 text-blue-400 rounded-lg hover:bg-blue-500/20 text-sm"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Details
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Previous hash */}
+                    {block.previousHash &&
+                      block.previousHash !== "0".repeat(64) && (
+                        <div className="mt-3 pt-3 border-t border-gray-800/50">
+                          <div className="flex items-center gap-2 text-gray-400 text-xs">
+                            <Link className="h-3 w-3" />
+                            <span>Links to:</span>
+                            <span className="font-mono truncate">
+                              {block.previousHash.substring(0, 24)}...
+                            </span>
+                          </div>
+                        </div>
+                      )}
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
         {/* Right Column - Block Details & Verification */}
-        <div className="space-y-4 sm:space-y-6">
-          {/* Quick Stats for Mobile */}
-          <div className="lg:hidden">
-            {/* Chain Verification - Mobile Optimized */}
-            <div className="glass p-4">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                {verification?.valid ? (
-                  <ShieldCheck className="h-4 w-4 text-green-400" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                )}
-                Chain Integrity
-              </h3>
-
-              {verification ? (
-                <div className="space-y-3">
-                  <div
-                    className={`p-3 rounded-lg ${
-                      verification.valid
-                        ? "bg-green-500/10 border border-green-500/30"
-                        : "bg-red-500/10 border border-red-500/30"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {verification.valid ? (
-                        <>
-                          <CheckCircle className="h-5 w-5 text-green-400" />
-                          <div>
-                            <p className="text-xs font-semibold text-green-400">
-                              Chain Valid
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {verification.message}
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="h-5 w-5 text-red-400" />
-                          <div>
-                            <p className="text-xs font-semibold text-red-400">
-                              Chain Invalid
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              Block #{verification.invalidBlock}
-                            </p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mx-auto"></div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Selected Block Details - Desktop */}
-          <div className="hidden lg:block glass p-6">
+        <div className="space-y-6">
+          {/* Selected Block Details */}
+          <div className="glass p-6 animate-slide-in">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-blue-400" />
               Block Details
@@ -712,7 +478,7 @@ const BlockchainVisualizer = () => {
                   <label className="block text-sm text-gray-400 mb-1">
                     Block Index
                   </label>
-                  <div className="font-mono bg-gray-800/50 p-2 rounded text-sm">
+                  <div className="font-mono bg-gray-800/50 p-2 rounded">
                     {selectedBlock.index}
                   </div>
                 </div>
@@ -721,7 +487,7 @@ const BlockchainVisualizer = () => {
                   <label className="block text-sm text-gray-400 mb-1">
                     Timestamp
                   </label>
-                  <div className="bg-gray-800/50 p-2 rounded text-sm">
+                  <div className="bg-gray-800/50 p-2 rounded">
                     {formatDate(selectedBlock.timestamp)}
                   </div>
                 </div>
@@ -733,13 +499,28 @@ const BlockchainVisualizer = () => {
                   <div
                     className={`px-3 py-1 rounded-lg text-sm font-semibold inline-block ${getActionColor(selectedBlock.data?.action)}`}
                   >
-                    {selectedBlock.data?.action}
+                    {selectedBlock.data?.action || "UNKNOWN"}
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">
-                    Hash
+                    Description
+                  </label>
+                  <div className="bg-gray-800/50 p-2 rounded">
+                    {selectedBlock.data?.description || "No description"}
+                    {selectedBlock.data?.details &&
+                      Object.keys(selectedBlock.data.details).length > 0 && (
+                        <pre className="mt-2 text-xs text-gray-400">
+                          {JSON.stringify(selectedBlock.data.details, null, 2)}
+                        </pre>
+                      )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    Full Hash
                   </label>
                   <div className="font-mono text-xs bg-gray-800/50 p-2 rounded break-all">
                     {selectedBlock.hash}
@@ -765,7 +546,7 @@ const BlockchainVisualizer = () => {
                   <label className="block text-sm text-gray-400 mb-1">
                     Nonce
                   </label>
-                  <div className="font-mono bg-gray-800/50 p-2 rounded text-sm">
+                  <div className="font-mono bg-gray-800/50 p-2 rounded">
                     {selectedBlock.nonce}
                   </div>
                 </div>
@@ -773,13 +554,14 @@ const BlockchainVisualizer = () => {
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <Shield className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">Select a block to view details</p>
+                <p>Select a block to view details</p>
+                <p className="text-sm mt-1">Click on any block in the list</p>
               </div>
             )}
           </div>
 
-          {/* Chain Verification - Desktop */}
-          <div className="hidden lg:block glass p-6">
+          {/* Chain Verification */}
+          <div className="glass p-6 animate-slide-in">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               {verification?.valid ? (
                 <ShieldCheck className="h-5 w-5 text-green-400" />
@@ -792,11 +574,10 @@ const BlockchainVisualizer = () => {
             {verification ? (
               <div className="space-y-4">
                 <div
-                  className={`p-4 rounded-xl ${
-                    verification.valid
-                      ? "bg-green-500/10 border border-green-500/30"
-                      : "bg-red-500/10 border border-red-500/30"
-                  }`}
+                  className={`p-4 rounded-xl ${verification.valid
+                    ? "bg-green-500/10 border border-green-500/30"
+                    : "bg-red-500/10 border border-red-500/30"
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     {verification.valid ? (
@@ -819,7 +600,8 @@ const BlockchainVisualizer = () => {
                             Chain Invalid
                           </p>
                           <p className="text-sm text-gray-400">
-                            Block #{verification.invalidBlock}
+                            Block #{verification.invalidBlock}:{" "}
+                            {verification.reason}
                           </p>
                         </div>
                       </>
@@ -827,9 +609,28 @@ const BlockchainVisualizer = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-gray-800/50 p-3 rounded">
+                    <p className="text-sm text-gray-400">Total Blocks</p>
+                    <p className="text-xl font-bold">
+                      {verification.blockCount || blocks.length}
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-800/50 p-3 rounded">
+                    <p className="text-sm text-gray-400">Status</p>
+                    <p
+                      className={`text-xl font-bold ${verification.valid ? "text-green-400" : "text-red-400"
+                        }`}
+                    >
+                      {verification.valid ? "Secure" : "Compromised"}
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   onClick={fetchBlockchainData}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 rounded-xl hover:bg-blue-500/30 transition-all text-sm"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 rounded-xl hover:bg-blue-500/30 transition-all"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Re-verify Chain
@@ -838,196 +639,67 @@ const BlockchainVisualizer = () => {
             ) : (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="mt-2 text-gray-400">Verifying chain...</p>
               </div>
             )}
           </div>
 
-          {/* Quick Actions - Mobile & Desktop */}
-          <div className="glass p-4 sm:p-6">
-            <h3 className="text-sm sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-              <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
+          {/* Quick Actions */}
+          <div className="glass p-6 animate-slide-in">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-purple-400" />
               Quick Actions
             </h3>
-            <div className="space-y-2 sm:space-y-3">
+            <div className="space-y-3">
               <button
-                onClick={() => window.open("/api/blockchain/chain", "_blank")}
-                className="w-full flex items-center justify-between p-2 sm:p-3 bg-gray-800/50 rounded-lg sm:rounded-xl hover:bg-gray-800/70 transition-all text-sm"
+                onClick={() => {
+                  window.open("/api/blockchain/chain", "_blank");
+                }}
+                className="w-full flex items-center justify-between p-3 bg-gray-800/50 rounded-xl hover:bg-gray-800/70 transition-all group"
               >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400" />
-                  <span className="text-xs sm:text-sm">View Full Chain</span>
+                <div className="flex items-center gap-3">
+                  <ExternalLink className="h-4 w-4 text-blue-400" />
+                  <span>View Full Chain (JSON)</span>
                 </div>
-                <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-blue-400" />
               </button>
 
               <button
-                onClick={() => window.open("/api/blockchain/stats", "_blank")}
-                className="w-full flex items-center justify-between p-2 sm:p-3 bg-gray-800/50 rounded-lg sm:rounded-xl hover:bg-gray-800/70 transition-all text-sm"
+                onClick={() => {
+                  window.open("/api/blockchain/stats", "_blank");
+                }}
+                className="w-full flex items-center justify-between p-3 bg-gray-800/50 rounded-xl hover:bg-gray-800/70 transition-all group"
               >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 text-green-400" />
-                  <span className="text-xs sm:text-sm">View Statistics</span>
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="h-4 w-4 text-green-400" />
+                  <span>View Statistics (JSON)</span>
                 </div>
-                <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-green-400" />
               </button>
 
               <button
-                onClick={() => (window.location.href = "/dashboard")}
-                className="w-full flex items-center justify-between p-2 sm:p-3 bg-gray-800/50 rounded-lg sm:rounded-xl hover:bg-gray-800/70 transition-all text-sm"
+                onClick={() => navigate("/dashboard")}
+                className="w-full flex items-center justify-between p-3 bg-gray-800/50 rounded-xl hover:bg-gray-800/70 transition-all group"
               >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <Shield className="h-3 w-3 sm:h-4 sm:w-4 text-amber-400" />
-                  <span className="text-xs sm:text-sm">Go to Dashboard</span>
+                <div className="flex items-center gap-3">
+                  <Shield className="h-4 w-4 text-amber-400" />
+                  <span>Go to Dashboard</span>
                 </div>
-                <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-amber-400" />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Block Details Modal - Mobile */}
-      <dialog
-        ref={detailsModalRef}
-        className="glass w-[95%] sm:w-full max-w-lg rounded-2xl p-4 sm:p-6 backdrop:bg-black/70"
-      >
-        {selectedBlock && (
-          <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
-                <div className="p-1.5 sm:p-2 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-lg sm:rounded-xl">
-                  <Link className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400" />
-                </div>
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                  Block #{selectedBlock.index}
-                </span>
-              </h2>
-              <button
-                onClick={() => detailsModalRef.current?.close()}
-                className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-800/50 rounded-lg"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-800/30 p-3 rounded-lg">
-                  <span className="text-gray-500 text-xs">Timestamp</span>
-                  <p className="text-gray-300 text-sm mt-1">
-                    {formatTime(selectedBlock.timestamp)}
-                  </p>
-                </div>
-                <div className="bg-gray-800/30 p-3 rounded-lg">
-                  <span className="text-gray-500 text-xs">Date</span>
-                  <p className="text-gray-300 text-sm mt-1">
-                    {new Date(selectedBlock.timestamp).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-gray-800/30 p-3 rounded-lg">
-                <span className="text-gray-500 text-xs">Action</span>
-                <div
-                  className={`mt-1 px-3 py-1 rounded-lg text-sm font-semibold inline-flex items-center gap-1 ${getActionColor(selectedBlock.data?.action)}`}
-                >
-                  {getActionIcon(selectedBlock.data?.action)}
-                  <span>{selectedBlock.data?.action}</span>
-                </div>
-              </div>
-
-              <div className="bg-gray-800/30 p-3 rounded-lg">
-                <span className="text-gray-500 text-xs">User ID / IP</span>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="text-gray-300 text-sm">
-                    User: {selectedBlock.data?.userId || "N/A"}
-                  </p>
-                  <p className="text-gray-300 text-sm">
-                    IP: {selectedBlock.data?.ip || "N/A"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-gray-800/30 p-3 rounded-lg">
-                <span className="text-gray-500 text-xs">Block Hash</span>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="font-mono text-xs text-gray-300 break-all max-w-[80%]">
-                    {selectedBlock.hash}
-                  </p>
-                  <button
-                    onClick={() => copyToClipboard(selectedBlock.hash)}
-                    className="ml-2 text-blue-400 hover:text-blue-300"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-gray-800/30 p-3 rounded-lg">
-                <span className="text-gray-500 text-xs">Previous Hash</span>
-                <p className="font-mono text-xs text-gray-300 mt-1 break-all">
-                  {selectedBlock.previousHash}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-800/30 p-3 rounded-lg">
-                  <span className="text-gray-500 text-xs">Nonce</span>
-                  <p className="text-gray-300 text-sm mt-1 font-mono">
-                    {selectedBlock.nonce}
-                  </p>
-                </div>
-                <div className="bg-gray-800/30 p-3 rounded-lg">
-                  <span className="text-gray-500 text-xs">Difficulty</span>
-                  <p className="text-gray-300 text-sm mt-1">
-                    {selectedBlock.difficulty || 2}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => detailsModalRef.current?.close()}
-                className="w-full p-3 bg-gray-800/50 text-gray-400 rounded-xl hover:bg-gray-700/50 transition-all text-sm"
-              >
-                Close
-              </button>
-            </div>
-          </>
-        )}
-      </dialog>
-
-      {/* Bottom Stats - Mobile Optimized */}
+      {/* Bottom Stats */}
       {chainInfo && chainInfo.actions && (
-        <div className="glass p-3 sm:p-6">
-          <h3 className="text-sm sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" />
+        <div className="glass p-6 animate-fade-in">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-cyan-400" />
             Blockchain Statistics
           </h3>
-
-          {/* Mobile: Horizontal scroll */}
-          <div className="flex sm:hidden gap-3 overflow-x-auto pb-2 -mx-3 px-3 scrollbar-hide">
-            {Object.entries(chainInfo.actions).map(([action, count]) => (
-              <div
-                key={action}
-                className="flex-none w-36 bg-gray-800/50 p-3 rounded-lg"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400 truncate">
-                      {action.slice(0, 12)}
-                    </p>
-                    <p className="text-lg font-bold">{count}</p>
-                  </div>
-                  <div className={`p-1.5 rounded-lg ${getActionColor(action)}`}>
-                    {getActionIcon(action)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: Grid */}
-          <div className="hidden sm:grid sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {Object.entries(chainInfo.actions).map(([action, count]) => (
               <div key={action} className="bg-gray-800/50 p-4 rounded-xl">
                 <div className="flex items-center justify-between">

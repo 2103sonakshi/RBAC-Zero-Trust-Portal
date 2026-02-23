@@ -20,7 +20,7 @@ import {
 import axios from "axios";
 import toast from "react-hot-toast";
 
-const API_URL = "http://localhost:3000/api";
+const API_URL = "/api";
 
 const UserManagement = () => {
   const navigate = useNavigate();
@@ -306,11 +306,10 @@ const UserManagement = () => {
                       <button
                         onClick={() => handleOpenRoleModal(user)}
                         disabled={user.id === currentUser?.id}
-                        className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                          user.id === currentUser?.id
-                            ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
+                        className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${user.id === currentUser?.id
+                          ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
                       >
                         <Edit className="h-4 w-4 mr-1" />
                         Change Role
@@ -346,7 +345,7 @@ const UserManagement = () => {
                 onClick={handleCloseModal}
               ></div>
 
-              <div className="relative bg-gray-800 rounded-lg max-w-md w-full p-6 border border-gray-700">
+              <div className="relative bg-gray-800 rounded-lg max-w-md w-full p-4 sm:p-6 border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold text-white">
                     Change Role for {selectedUser.username}
@@ -387,11 +386,10 @@ const UserManagement = () => {
                   <button
                     onClick={handleChangeRole}
                     disabled={!selectedRole || loading}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${
-                      !selectedRole || loading
-                        ? "bg-blue-800 text-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${!selectedRole || loading
+                      ? "bg-blue-800 text-blue-300 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
                   >
                     {loading ? (
                       <>

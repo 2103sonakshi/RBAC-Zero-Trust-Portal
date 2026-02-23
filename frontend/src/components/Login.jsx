@@ -29,15 +29,13 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      const response = await axios.post("/api/auth/login", {
-        username: formData.username,
-        password: formData.password,
-      });
+      const result = await login(formData.username, formData.password);
 
-      await login(response.data.user, response.data.token);
-      navigate("/dashboard");
+      if (result.success) {
+        navigate("/dashboard");
+      }
     } catch (error) {
-      toast.error(error.response?.data?.error || "Invalid credentials");
+      console.error("Login error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +115,7 @@ const Login = () => {
         </div>
 
         {/* Login Card */}
-        <div className="glass p-8 relative overflow-hidden">
+        <div className="glass p-6 sm:p-8 relative overflow-hidden">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Username Field */}
             <div className="space-y-2">
@@ -135,6 +133,7 @@ const Login = () => {
                   placeholder="Enter username"
                   required
                   disabled={isLoading}
+                  autoComplete="username"
                 />
               </div>
             </div>
@@ -155,6 +154,7 @@ const Login = () => {
                   placeholder="Enter password"
                   required
                   disabled={isLoading}
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -202,39 +202,45 @@ const Login = () => {
 
             {/* Demo Credentials (Collapsible) */}
             {showDemo && (
-              <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700 space-y-2">
+              <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700 space-y-2 animate-slide-in">
                 <p className="text-xs font-medium text-gray-400 mb-2">
-                  Quick Login
+                  Quick Login (Click to fill credentials)
                 </p>
                 <button
                   type="button"
                   onClick={() => fillDemoCredentials("admin", "Admin@123")}
-                  className="w-full flex items-center justify-between p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors"
+                  className="w-full flex items-center justify-between p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors group"
                 >
                   <span className="text-sm font-medium text-blue-400">
                     Admin
                   </span>
-                  <span className="text-xs text-gray-500">→</span>
+                  <span className="text-xs text-gray-500 group-hover:text-blue-400 transition-colors">
+                    Full Access
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => fillDemoCredentials("user", "User@123")}
-                  className="w-full flex items-center justify-between p-2 bg-green-500/10 hover:bg-green-500/20 rounded-lg transition-colors"
+                  className="w-full flex items-center justify-between p-2 bg-green-500/10 hover:bg-green-500/20 rounded-lg transition-colors group"
                 >
                   <span className="text-sm font-medium text-green-400">
                     User
                   </span>
-                  <span className="text-xs text-gray-500">→</span>
+                  <span className="text-xs text-gray-500 group-hover:text-green-400 transition-colors">
+                    Limited Access
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => fillDemoCredentials("guest", "Guest@123")}
-                  className="w-full flex items-center justify-between p-2 bg-gray-500/10 hover:bg-gray-500/20 rounded-lg transition-colors"
+                  className="w-full flex items-center justify-between p-2 bg-gray-500/10 hover:bg-gray-500/20 rounded-lg transition-colors group"
                 >
                   <span className="text-sm font-medium text-gray-400">
                     Guest
                   </span>
-                  <span className="text-xs text-gray-500">→</span>
+                  <span className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">
+                    Read Only
+                  </span>
                 </button>
               </div>
             )}
@@ -243,7 +249,7 @@ const Login = () => {
 
         {/* Footer - Minimal */}
         <p className="text-center text-xs text-gray-600 mt-6">
-          RBAC Zero-Trust Portal
+          RBAC Zero-Trust Portal with Blockchain Audit
         </p>
       </div>
     </div>

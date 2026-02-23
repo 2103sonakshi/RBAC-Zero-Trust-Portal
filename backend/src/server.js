@@ -230,6 +230,7 @@ class BlockchainService {
       LOGIN_FAILED: "Failed login attempt",
       LOGOUT: "User session terminated",
       CREATE_RESOURCE: "New resource created",
+      UPDATE_RESOURCE: "Resource updated",
       DELETE_RESOURCE: "Resource deleted",
       UPDATE_PERMISSION: "Permission modified",
       ROLE_ASSIGNMENT: "Role assigned to user",
@@ -250,6 +251,7 @@ class BlockchainService {
       ROLE_DELETED: "Role deleted",
       PERMISSION_ASSIGNED: "Permission assigned to role",
       USER_ROLE_CHANGED: "User role changed",
+      TOKEN_VALIDATED: "Token validated successfully",
       // IP Control actions
       IP_WHITELIST_ADDED: "IP address added to whitelist",
       IP_WHITELIST_REMOVED: "IP address removed from whitelist",
@@ -632,20 +634,9 @@ async function initDatabase() {
   try {
     console.log("🔄 Initializing database...");
 
-    // Drop and recreate ONLY user-related tables (not blockchain)
-    await dbRun(`DROP TABLE IF EXISTS ip_login_attempts`);
-    await dbRun(`DROP TABLE IF EXISTS ip_blacklist`);
-    await dbRun(`DROP TABLE IF EXISTS ip_whitelist`);
-    await dbRun(`DROP TABLE IF EXISTS role_permissions`);
-    await dbRun(`DROP TABLE IF EXISTS permissions`);
-    await dbRun(`DROP TABLE IF EXISTS roles`);
-    await dbRun(`DROP TABLE IF EXISTS sessions`);
-    await dbRun(`DROP TABLE IF EXISTS resources`);
-    await dbRun(`DROP TABLE IF EXISTS users`);
-
-    // Create roles table
+    // Create roles table if not exists
     await dbRun(`
-      CREATE TABLE roles (
+      CREATE TABLE IF NOT EXISTS roles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         description TEXT,
@@ -655,9 +646,9 @@ async function initDatabase() {
       )
     `);
 
-    // Create permissions table
+    // Create permissions table if not exists
     await dbRun(`
-      CREATE TABLE permissions (
+      CREATE TABLE IF NOT EXISTS permissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         resource TEXT NOT NULL,
@@ -667,9 +658,9 @@ async function initDatabase() {
       )
     `);
 
-    // Create role_permissions junction table
+    // Create role_permissions junction table if not exists
     await dbRun(`
-      CREATE TABLE role_permissions (
+      CREATE TABLE IF NOT EXISTS role_permissions (
         role_id INTEGER,
         permission_id INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -679,9 +670,9 @@ async function initDatabase() {
       )
     `);
 
-    // Create users table with role_id foreign key
+    // Create users table if not exists
     await dbRun(`
-      CREATE TABLE users (
+      CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
@@ -694,8 +685,9 @@ async function initDatabase() {
       )
     `);
 
+    // Create resources table if not exists
     await dbRun(`
-      CREATE TABLE resources (
+      CREATE TABLE IF NOT EXISTS resources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
         description TEXT,
@@ -706,8 +698,9 @@ async function initDatabase() {
       )
     `);
 
+    // Create sessions table if not exists
     await dbRun(`
-      CREATE TABLE sessions (
+      CREATE TABLE IF NOT EXISTS sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         action TEXT NOT NULL,
@@ -718,9 +711,9 @@ async function initDatabase() {
       )
     `);
 
-    // Create IP Control Tables
+    // Create IP Control Tables if not exists
     await dbRun(`
-      CREATE TABLE ip_whitelist (
+      CREATE TABLE IF NOT EXISTS ip_whitelist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip_address TEXT NOT NULL UNIQUE,
         description TEXT,
@@ -730,7 +723,7 @@ async function initDatabase() {
     `);
 
     await dbRun(`
-      CREATE TABLE ip_blacklist (
+      CREATE TABLE IF NOT EXISTS ip_blacklist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip_address TEXT NOT NULL UNIQUE,
         reason TEXT,
@@ -740,7 +733,7 @@ async function initDatabase() {
     `);
 
     await dbRun(`
-      CREATE TABLE ip_login_attempts (
+      CREATE TABLE IF NOT EXISTS ip_login_attempts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip_address TEXT NOT NULL,
         username TEXT,
@@ -750,7 +743,7 @@ async function initDatabase() {
       )
     `);
 
-    // Create blockchain blocks table ONLY IF IT DOESN'T EXIST
+    // Create blockchain blocks table IF IT DOESN'T EXIST
     await dbRun(`
       CREATE TABLE IF NOT EXISTS blockchain_blocks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -767,7 +760,7 @@ async function initDatabase() {
       )
     `);
 
-    // Insert default permissions
+    // Insert default permissions if they don't exist
     const defaultPermissions = [
       // User management permissions
       ["user.create", "users", "create", "Create new users"],
@@ -775,6 +768,7 @@ async function initDatabase() {
       ["user.update", "users", "update", "Update users"],
       ["user.delete", "users", "delete", "Delete users"],
       ["user.assign_role", "users", "assign_role", "Assign roles to users"],
+      ["user.read_all", "users", "read_all", "View all users data"],
 
       // Role management permissions
       ["role.create", "roles", "create", "Create new roles"],
@@ -791,6 +785,7 @@ async function initDatabase() {
       // Resource management permissions
       ["resource.create", "resources", "create", "Create resources"],
       ["resource.read", "resources", "read", "View resources"],
+      ["resource.read_all", "resources", "read_all", "View all resources"],
       ["resource.update", "resources", "update", "Update resources"],
       ["resource.delete", "resources", "delete", "Delete resources"],
       ["resource.publish", "resources", "publish", "Publish resources"],
@@ -822,7 +817,7 @@ async function initDatabase() {
     }
     console.log(`✅ Created ${defaultPermissions.length} default permissions`);
 
-    // Insert default roles
+    // Insert default roles if they don't exist
     const defaultRoles = [
       { name: "ADMIN", description: "Full system access", is_system: 1 },
       {
@@ -841,68 +836,71 @@ async function initDatabase() {
     }
     console.log(`✅ Created ${defaultRoles.length} default roles`);
 
-    // Assign permissions to roles
-    // Get all permissions
+    // Get all permissions and role IDs
     const allPermissions = await dbAll(`SELECT id, name FROM permissions`);
-
-    // Get role IDs
     const adminRole = await dbGet(`SELECT id FROM roles WHERE name = 'ADMIN'`);
     const userRole = await dbGet(`SELECT id FROM roles WHERE name = 'USER'`);
     const guestRole = await dbGet(`SELECT id FROM roles WHERE name = 'GUEST'`);
 
     // ADMIN gets all permissions
-    for (const perm of allPermissions) {
-      await dbRun(
-        `INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
-        [adminRole.id, perm.id],
-      );
-    }
-
-    // USER gets specific permissions
-    const userPermissions = [
-      "user.read",
-      "user.update",
-      "resource.create",
-      "resource.read",
-      "resource.update",
-      "resource.delete",
-      "dashboard.view",
-      "dashboard.stats",
-      "blockchain.view",
-      "blockchain.verify",
-    ];
-
-    for (const permName of userPermissions) {
-      const perm = allPermissions.find((p) => p.name === permName);
-      if (perm) {
+    if (adminRole) {
+      for (const perm of allPermissions) {
         await dbRun(
           `INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
-          [userRole.id, perm.id],
+          [adminRole.id, perm.id],
         );
       }
     }
 
-    // GUEST gets read-only permissions
-    const guestPermissions = [
-      "user.read",
-      "resource.read",
-      "dashboard.view",
-      "blockchain.view",
-    ];
+    // USER gets specific permissions
+    if (userRole) {
+      const userPermissions = [
+        "user.read",
+        "user.update",
+        "resource.create",
+        "resource.read",
+        "resource.update",
+        "resource.delete",
+        "dashboard.view",
+        "dashboard.stats",
+        "blockchain.view",
+        "blockchain.verify",
+      ];
 
-    for (const permName of guestPermissions) {
-      const perm = allPermissions.find((p) => p.name === permName);
-      if (perm) {
-        await dbRun(
-          `INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
-          [guestRole.id, perm.id],
-        );
+      for (const permName of userPermissions) {
+        const perm = allPermissions.find((p) => p.name === permName);
+        if (perm) {
+          await dbRun(
+            `INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+            [userRole.id, perm.id],
+          );
+        }
+      }
+    }
+
+    // GUEST gets read-only permissions
+    if (guestRole) {
+      const guestPermissions = [
+        "user.read",
+        "resource.read",
+        "dashboard.view",
+        "blockchain.view",
+      ];
+
+      for (const permName of guestPermissions) {
+        const perm = allPermissions.find((p) => p.name === permName);
+        if (perm) {
+          await dbRun(
+            `INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+            [guestRole.id, perm.id],
+          );
+        }
       }
     }
 
     console.log(`✅ Assigned permissions to default roles`);
 
-    // Create default users with role_ids
+    // Create default users if they don't exist
     const defaultUsers = [
       {
         username: "admin",
@@ -939,7 +937,7 @@ async function initDatabase() {
 
         if (!userExists && role) {
           const passwordHash = await bcrypt.hash(user.password, 10);
-          const result = await dbRun(
+          await dbRun(
             "INSERT INTO users (username, password_hash, role_id, email, full_name) VALUES (?, ?, ?, ?, ?)",
             [user.username, passwordHash, role.id, user.email, user.full_name],
           );
@@ -1095,6 +1093,140 @@ const authorize = (requiredPermission) => {
     }
   };
 };
+
+// ========== AUTH ROUTES ========== //
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    let { username, password } = req.body;
+    const ip = req.clientIP;
+    const userAgent = req.headers["user-agent"];
+
+    username = username?.trim();
+    password = password?.trim();
+
+    if (!username || !password) {
+      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
+      return res.status(400).json({
+        success: false,
+        error: "Username and password required",
+      });
+    }
+
+    const user = await dbGet(
+      `SELECT u.*, r.name as role_name, r.id as role_id 
+       FROM users u 
+       LEFT JOIN roles r ON u.role_id = r.id 
+       WHERE u.username = ?`,
+      [username],
+    );
+
+    if (!user) {
+      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
+      await blockchainService.addBlock("unknown", "LOGIN_FAILED", ip, {
+        username,
+        reason: "User not found",
+      });
+      return res
+        .status(401)
+        .json({ success: false, error: "Invalid credentials" });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+
+    if (!validPassword) {
+      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
+      await blockchainService.addBlock(user.id.toString(), "LOGIN_FAILED", ip, {
+        username,
+        reason: "Invalid password",
+      });
+      return res
+        .status(401)
+        .json({ success: false, error: "Invalid credentials" });
+    }
+
+    // Successful login
+    await ipControlService.logLoginAttempt(ip, username, true, userAgent);
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role_name || "USER",
+      },
+      JWT_SECRET,
+      { expiresIn: "30d" },
+    );
+
+    await blockchainService.addBlock(user.id.toString(), "LOGIN_SUCCESS", ip, {
+      username,
+      role: user.role_name,
+    });
+
+    await dbRun(
+      "INSERT INTO sessions (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)",
+      [user.id, "LOGIN", ip, userAgent],
+    );
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role_name || "USER",
+        roleId: user.role_id,
+        email: user.email,
+        fullName: user.full_name,
+        createdAt: user.created_at,
+      },
+      ipInfo: {
+        ip,
+        message: "Login from this IP has been recorded",
+      },
+    });
+  } catch (error) {
+    console.error("❌ Login error:", error);
+    await blockchainService.addBlock("unknown", "LOGIN_FAILED", req.clientIP, {
+      error: error.message,
+    });
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// Token validation endpoint (for frontend)
+app.get("/api/auth/validate", authenticate, async (req, res) => {
+  try {
+    // Get user's permissions
+    const permissions = await dbAll(
+      `
+      SELECT p.name 
+      FROM permissions p
+      JOIN role_permissions rp ON p.id = rp.permission_id
+      WHERE rp.role_id = ?
+    `,
+      [req.user.roleId],
+    );
+
+    await blockchainService.addBlock(
+      req.user.id.toString(),
+      "TOKEN_VALIDATED",
+      req.clientIP,
+      { userId: req.user.id, username: req.user.username },
+    );
+
+    res.json({
+      success: true,
+      user: {
+        ...req.user,
+        permissions: permissions.map((p) => p.name),
+      },
+    });
+  } catch (error) {
+    console.error("Token validation error:", error);
+    res.status(500).json({ success: false, error: "Token validation failed" });
+  }
+});
 
 // ========== IP CONTROL API ROUTES ========== //
 
@@ -1759,6 +1891,33 @@ app.get(
   },
 );
 
+// Get current user
+app.get("/api/users/me", authenticate, async (req, res) => {
+  try {
+    // Get user's permissions
+    const permissions = await dbAll(
+      `
+      SELECT p.name 
+      FROM permissions p
+      JOIN role_permissions rp ON p.id = rp.permission_id
+      WHERE rp.role_id = ?
+    `,
+      [req.user.roleId],
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...req.user,
+        permissions: permissions.map((p) => p.name),
+      },
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
 // Update user role
 app.put(
   "/api/users/:userId/role",
@@ -1816,137 +1975,35 @@ app.put(
   },
 );
 
-// ========== ROUTES ========== //
-// Health endpoint
-app.get("/health", async (req, res) => {
+// Debug endpoint to check users
+app.get("/debug/users", async (req, res) => {
   try {
-    await blockchainService.initialize();
-    const verification = blockchainService.verifyChain();
+    const users = await dbAll(`
+      SELECT u.id, u.username, u.email, u.full_name, u.created_at, u.role_id,
+             r.name as role_name
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+    `);
+
+    const roles = await dbAll("SELECT * FROM roles");
+    const permissions = await dbAll("SELECT * FROM permissions");
 
     res.json({
       success: true,
-      status: "healthy",
-      service: "RBAC Portal with Blockchain Audit",
-      timestamp: new Date().toISOString(),
-      blockchain: {
-        blocks: blockchainService.getChain().length,
-        integrity: verification.valid,
-        difficulty: blockchainService.difficulty,
+      data: {
+        users,
+        roles,
+        permissions,
+        counts: {
+          users: users.length,
+          roles: roles.length,
+          permissions: permissions.length,
+        },
       },
     });
   } catch (error) {
-    console.error("Health check error:", error);
-    res.json({
-      success: true,
-      status: "healthy",
-      service: "RBAC Portal with Blockchain Audit",
-      timestamp: new Date().toISOString(),
-      blockchain: {
-        blocks: 0,
-        integrity: false,
-        error: "Blockchain initialization failed",
-      },
-    });
-  }
-});
-
-// ========== AUTH ROUTES ========== //
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    let { username, password } = req.body;
-    const ip = req.clientIP;
-    const userAgent = req.headers["user-agent"];
-
-    username = username?.trim();
-    password = password?.trim();
-
-    if (!username || !password) {
-      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
-      return res.status(400).json({
-        success: false,
-        error: "Username and password required",
-      });
-    }
-
-    const user = await dbGet(
-      `SELECT u.*, r.name as role_name, r.id as role_id 
-       FROM users u 
-       LEFT JOIN roles r ON u.role_id = r.id 
-       WHERE u.username = ?`,
-      [username],
-    );
-
-    if (!user) {
-      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
-      await blockchainService.addBlock("unknown", "LOGIN_FAILED", ip, {
-        username,
-        reason: "User not found",
-      });
-      return res
-        .status(401)
-        .json({ success: false, error: "Invalid credentials" });
-    }
-
-    const validPassword = await bcrypt.compare(password, user.password_hash);
-
-    if (!validPassword) {
-      await ipControlService.logLoginAttempt(ip, username, false, userAgent);
-      await blockchainService.addBlock(user.id.toString(), "LOGIN_FAILED", ip, {
-        username,
-        reason: "Invalid password",
-      });
-      return res
-        .status(401)
-        .json({ success: false, error: "Invalid credentials" });
-    }
-
-    // Successful login
-    await ipControlService.logLoginAttempt(ip, username, true, userAgent);
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        role: user.role_name || "USER",
-      },
-      JWT_SECRET,
-      { expiresIn: "30d" },
-    );
-
-    await blockchainService.addBlock(user.id.toString(), "LOGIN_SUCCESS", ip, {
-      username,
-      role: user.role_name,
-    });
-
-    await dbRun(
-      "INSERT INTO sessions (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)",
-      [user.id, "LOGIN", ip, userAgent],
-    );
-
-    res.json({
-      success: true,
-      message: "Login successful",
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role_name || "USER",
-        roleId: user.role_id,
-        email: user.email,
-        fullName: user.full_name,
-        createdAt: user.created_at,
-      },
-      ipInfo: {
-        ip,
-        message: "Login from this IP has been recorded",
-      },
-    });
-  } catch (error) {
-    console.error("❌ Login error:", error);
-    await blockchainService.addBlock("unknown", "LOGIN_FAILED", req.clientIP, {
-      error: error.message,
-    });
-    res.status(500).json({ success: false, error: "Internal server error" });
+    console.error("Debug error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2061,6 +2118,201 @@ app.post("/api/resources", authenticate, async (req, res) => {
   }
 });
 
+// ========== UPDATE RESOURCE ENDPOINT ========== //
+app.put("/api/resources/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, access_level } = req.body;
+
+    // Check if resource exists
+    const resource = await dbGet("SELECT * FROM resources WHERE id = ?", [id]);
+
+    if (!resource) {
+      return res.status(404).json({
+        success: false,
+        error: "Resource not found",
+      });
+    }
+
+    // Check permissions:
+    // - ADMIN can update any resource
+    // - USER can only update their own resources
+    // - GUEST cannot update any resources
+    if (req.user.role !== "ADMIN" && resource.user_id !== req.user.id) {
+      await blockchainService.addBlock(
+        req.user.id.toString(),
+        "UNAUTHORIZED_ACCESS",
+        req.clientIP,
+        {
+          endpoint: `/api/resources/${id}`,
+          method: "PUT",
+          reason: "Attempted to update someone else's resource",
+          resourceId: id,
+          resourceOwner: resource.user_id,
+        },
+      );
+
+      return res.status(403).json({
+        success: false,
+        error: "You don't have permission to update this resource",
+      });
+    }
+
+    // Validate title if provided
+    if (title !== undefined && !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Title cannot be empty",
+      });
+    }
+
+    // Build update query dynamically based on provided fields
+    const updates = [];
+    const values = [];
+
+    if (title !== undefined) {
+      updates.push("title = ?");
+      values.push(title.trim());
+    }
+
+    if (description !== undefined) {
+      updates.push("description = ?");
+      values.push(description?.trim() || null);
+    }
+
+    if (access_level !== undefined) {
+      updates.push("access_level = ?");
+      values.push(access_level.toUpperCase());
+    }
+
+    // Always update the updated_at timestamp
+    updates.push("updated_at = CURRENT_TIMESTAMP");
+
+    // Add the resource ID to values array
+    values.push(id);
+
+    // Execute update query
+    await dbRun(
+      `UPDATE resources SET ${updates.join(", ")} WHERE id = ?`,
+      values,
+    );
+
+    // Log to blockchain
+    await blockchainService.addBlock(
+      req.user.id.toString(),
+      "UPDATE_RESOURCE",
+      req.clientIP,
+      {
+        resourceId: id,
+        title: title || resource.title,
+        accessLevel: access_level || resource.access_level,
+        changes: {
+          title: title !== undefined,
+          description: description !== undefined,
+          access_level: access_level !== undefined,
+        },
+      },
+    );
+
+    // Log to sessions
+    await dbRun(
+      "INSERT INTO sessions (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)",
+      [req.user.id, "RESOURCE_UPDATE", req.clientIP, req.headers["user-agent"]],
+    );
+
+    // Fetch updated resource
+    const updatedResource = await dbGet(
+      "SELECT r.*, u.username as owner FROM resources r LEFT JOIN users u ON r.user_id = u.id WHERE r.id = ?",
+      [id],
+    );
+
+    res.json({
+      success: true,
+      message: "Resource updated successfully",
+      data: updatedResource,
+    });
+  } catch (error) {
+    console.error("Update resource error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+});
+
+// ========== DELETE RESOURCE ENDPOINT ========== //
+app.delete("/api/resources/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if resource exists
+    const resource = await dbGet("SELECT * FROM resources WHERE id = ?", [id]);
+
+    if (!resource) {
+      return res.status(404).json({
+        success: false,
+        error: "Resource not found",
+      });
+    }
+
+    // Check permissions:
+    // - ADMIN can delete any resource
+    // - USER can only delete their own resources
+    // - GUEST cannot delete any resources
+    if (req.user.role !== "ADMIN" && resource.user_id !== req.user.id) {
+      await blockchainService.addBlock(
+        req.user.id.toString(),
+        "UNAUTHORIZED_ACCESS",
+        req.clientIP,
+        {
+          endpoint: `/api/resources/${id}`,
+          method: "DELETE",
+          reason: "Attempted to delete someone else's resource",
+          resourceId: id,
+          resourceOwner: resource.user_id,
+        },
+      );
+
+      return res.status(403).json({
+        success: false,
+        error: "You don't have permission to delete this resource",
+      });
+    }
+
+    // Delete the resource
+    await dbRun("DELETE FROM resources WHERE id = ?", [id]);
+
+    // Log to blockchain
+    await blockchainService.addBlock(
+      req.user.id.toString(),
+      "DELETE_RESOURCE",
+      req.clientIP,
+      {
+        resourceId: id,
+        title: resource.title,
+        accessLevel: resource.access_level,
+      },
+    );
+
+    // Log to sessions
+    await dbRun(
+      "INSERT INTO sessions (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)",
+      [req.user.id, "RESOURCE_DELETE", req.clientIP, req.headers["user-agent"]],
+    );
+
+    res.json({
+      success: true,
+      message: "Resource deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete resource error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+});
+
 // ========== DASHBOARD ROUTES ========== //
 app.get("/api/dashboard/stats", authenticate, async (req, res) => {
   try {
@@ -2119,33 +2371,6 @@ app.get("/api/dashboard/stats", authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error("Get stats error:", error);
-    res.status(500).json({ success: false, error: "Internal server error" });
-  }
-});
-
-// ========== USER ROUTES ========== //
-app.get("/api/users/me", authenticate, async (req, res) => {
-  try {
-    // Get user's permissions
-    const permissions = await dbAll(
-      `
-      SELECT p.name 
-      FROM permissions p
-      JOIN role_permissions rp ON p.id = rp.permission_id
-      WHERE rp.role_id = ?
-    `,
-      [req.user.roleId],
-    );
-
-    res.json({
-      success: true,
-      data: {
-        ...req.user,
-        permissions: permissions.map((p) => p.name),
-      },
-    });
-  } catch (error) {
-    console.error("Get user error:", error);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
@@ -2257,6 +2482,39 @@ app.get(
   },
 );
 
+// Health endpoint
+app.get("/health", async (req, res) => {
+  try {
+    await blockchainService.initialize();
+    const verification = blockchainService.verifyChain();
+
+    res.json({
+      success: true,
+      status: "healthy",
+      service: "RBAC Portal with Blockchain Audit",
+      timestamp: new Date().toISOString(),
+      blockchain: {
+        blocks: blockchainService.getChain().length,
+        integrity: verification.valid,
+        difficulty: blockchainService.difficulty,
+      },
+    });
+  } catch (error) {
+    console.error("Health check error:", error);
+    res.json({
+      success: true,
+      status: "healthy",
+      service: "RBAC Portal with Blockchain Audit",
+      timestamp: new Date().toISOString(),
+      blockchain: {
+        blocks: 0,
+        integrity: false,
+        error: "Blockchain initialization failed",
+      },
+    });
+  }
+});
+
 // ========== OPTIONS HANDLER ========== //
 app.options("*", cors());
 
@@ -2297,7 +2555,12 @@ initDatabase().then(() => {
    
 👥 User Management:
    GET    /api/users
+   GET    /api/users/me
    PUT    /api/users/:userId/role
+
+🔐 Auth Endpoints:
+   POST   /api/auth/login
+   GET    /api/auth/validate  (NEW)
 
 🌐 IP Control Endpoints:
    GET    /api/ip/my-info
@@ -2310,12 +2573,11 @@ initDatabase().then(() => {
    GET    /api/ip/attempts/:ip
    GET    /api/ip/stats
 
-📊 Existing Endpoints:
-   POST   /api/auth/login
-   GET    /api/dashboard/stats
+📊 Resource Management:
    GET    /api/resources
    POST   /api/resources
-   GET    /api/users/me
+   PUT    /api/resources/:id  (NEW - Resource update)
+   DELETE /api/resources/:id  (Resource deletion)
    
 🔗 Blockchain Endpoints:
    GET    /api/blockchain/chain

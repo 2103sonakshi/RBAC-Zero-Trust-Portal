@@ -4,6 +4,7 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from "react-router-dom";
 import axios from "axios";
 import toast, { Toaster } from "react-hot-toast";
@@ -27,11 +28,15 @@ import UserManagement from "./components/UserManagement";
 import IPControl from "./components/IPControl";
 import AuditTrail from "./components/AuditTrail";
 import Navbar from "./components/Navbar";
-
+import InstallApp from "./components/InstallApp";
 // Import Auth Provider and hook
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
+// IMPORTANT: Remove duplicate axios configuration from here
+// The axios config is now handled entirely in AuthContext.jsx
+
 function AppContent() {
+  const location = useLocation();
   const { user, token, logout: authLogout } = useAuth();
   const [userRoles, setUserRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
@@ -43,15 +48,14 @@ function AppContent() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
+        // Use full URL for health check since it's not under /api
         const response = await axios.get("/health");
         setSystemHealth(response.data);
         console.log("✅ System Health:", response.data);
 
         // Only fetch blockchain stats if authenticated
         if (token) {
-          const statsResponse = await axios.get("/api/blockchain/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const statsResponse = await axios.get("/api/blockchain/stats");
           if (statsResponse.data.success) {
             setBlockchainStats(statsResponse.data.stats);
           }
@@ -72,10 +76,8 @@ function AppContent() {
             setUserRoles(user.roles);
           }
 
-          // Fetch permissions
-          const response = await axios.get("/api/users/me", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          // Fetch permissions - token will be auto-attached by interceptor
+          const response = await axios.get("/api/users/me");
           if (response.data.success && response.data.data.permissions) {
             setPermissions(response.data.data.permissions);
           }
@@ -94,7 +96,7 @@ function AppContent() {
   // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [location]);
+  }, [location.pathname]);
 
   // RBAC helper functions
   const hasRole = useCallback(
@@ -116,7 +118,11 @@ function AppContent() {
 
   const handleLogout = useCallback(async () => {
     try {
-      await axios.post("/api/auth/logout").catch(() => {});
+      // Optional: Call logout endpoint if it exists
+      await axios.post("/api/auth/logout").catch(() => {
+        // Silently fail if endpoint doesn't exist
+        console.log("Logout endpoint not available");
+      });
     } catch (error) {
       console.warn("Logout API call failed:", error);
     } finally {
@@ -203,6 +209,11 @@ function AppContent() {
     return children;
   };
 
+  // If loading, show loading screen
+  if (!user && token) {
+    return <LoadingScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col">
       {/* Toast Notifications - Mobile Optimized */}
@@ -234,23 +245,25 @@ function AppContent() {
         }}
       />
 
+      {/* PWA Install Banner */}
+      <InstallApp />
+
       {/* System Health Banner - Mobile Optimized */}
-      {systemHealth && (
+      {systemHealth && location.pathname !== "/login" && location.pathname !== "/login/" && location.pathname !== "/" && (
         <div className="bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700 sticky top-0 z-40">
           <div className="px-3 sm:px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
               <div className="flex items-center space-x-2 sm:space-x-3">
                 <div
-                  className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${
-                    systemHealth.status === "healthy"
-                      ? "bg-green-500 animate-pulse"
-                      : "bg-red-500"
-                  }`}
+                  className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${systemHealth.status === "healthy"
+                    ? "bg-green-500 animate-pulse"
+                    : "bg-red-500"
+                    }`}
                 ></div>
                 <span className="text-gray-300 font-medium truncate max-w-[120px] sm:max-w-none">
                   RBAC Portal
                 </span>
-                <span className="text-gray-400 hidden xs:inline">v1.0</span>
+                <span className="text-gray-400 hidden sm:inline">v1.0</span>
               </div>
               <div className="flex items-center space-x-3 sm:space-x-4">
                 {blockchainStats && (
@@ -260,11 +273,10 @@ function AppContent() {
                       {blockchainStats.totalBlocks} Blocks
                     </span>
                     <span
-                      className={`text-xs hidden sm:inline ${
-                        blockchainStats.integrity
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }`}
+                      className={`text-xs hidden sm:inline ${blockchainStats.integrity
+                        ? "text-green-400"
+                        : "text-red-400"
+                        }`}
                     >
                       {blockchainStats.integrity ? "✓ Secure" : "✗ Tampered"}
                     </span>
@@ -322,6 +334,7 @@ function AppContent() {
               }
             />
 
+            {/* ResourceManager */}
             <Route
               path="/resources"
               element={
@@ -381,35 +394,37 @@ function AppContent() {
       </main>
 
       {/* Footer - Mobile Optimized */}
-      <footer className="border-t border-gray-800 bg-gray-900/50 mt-auto">
-        <div className="px-3 sm:px-4 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-xs sm:text-sm">
-            <div className="flex items-center space-x-2">
-              <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" />
-              <span className="text-gray-400">
-                RBAC Portal •{" "}
-                {systemHealth?.status === "healthy"
-                  ? "🟢 Operational"
-                  : "🔴 Degraded"}
-              </span>
-            </div>
-            <div className="text-gray-500 text-center sm:text-right">
-              <span>© 2025 • </span>
-              {user && (
+      {location.pathname !== "/login" && location.pathname !== "/login/" && location.pathname !== "/" && (
+        <footer className="border-t border-gray-800 bg-gray-900/50 mt-auto">
+          <div className="px-3 sm:px-4 py-4 sm:py-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-xs sm:text-sm">
+              <div className="flex items-center space-x-2">
+                <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" />
                 <span className="text-gray-400">
-                  <span className="hidden xs:inline">Logged in as </span>
-                  <span className="text-blue-400 font-medium">
-                    {user?.username}
-                  </span>
-                  <span className="ml-2 px-2 py-0.5 bg-gray-800 rounded-full text-xs">
-                    {user?.role}
-                  </span>
+                  RBAC Portal •{" "}
+                  {systemHealth?.status === "healthy"
+                    ? "🟢 Operational"
+                    : "🔴 Degraded"}
                 </span>
-              )}
+              </div>
+              <div className="text-gray-500 text-center sm:text-right">
+                <span>© 2026 • </span>
+                {user && (
+                  <span className="text-gray-400">
+                    <span className="hidden sm:inline">Logged in as </span>
+                    <span className="text-blue-400 font-medium">
+                      {user?.username}
+                    </span>
+                    <span className="ml-2 px-2 py-0.5 bg-gray-800 rounded-full text-xs">
+                      {user?.role}
+                    </span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
@@ -417,7 +432,7 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppContent />
       </Router>
     </AuthProvider>

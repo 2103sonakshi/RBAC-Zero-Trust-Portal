@@ -18,7 +18,7 @@ import {
 import axios from "axios";
 import toast from "react-hot-toast";
 
-const API_URL = "http://localhost:3000/api";
+const API_URL = "/api";
 
 const RoleManagement = () => {
   const { user, token } = useAuth();
@@ -409,11 +409,10 @@ const RoleManagement = () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                          role.is_system
-                            ? "bg-gray-700 text-gray-300 border-gray-600"
-                            : "bg-blue-900 text-blue-300 border-blue-800"
-                        }`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${role.is_system
+                          ? "bg-gray-700 text-gray-300 border-gray-600"
+                          : "bg-blue-900 text-blue-300 border-blue-800"
+                          }`}
                       >
                         {role.is_system ? "System" : "Custom"}
                       </span>
@@ -429,25 +428,23 @@ const RoleManagement = () => {
                         </button>
                         <button
                           onClick={() => handleOpenRoleModal(role)}
-                          disabled={role.is_system === 1}
-                          className={`p-2 rounded-lg transition-colors ${
-                            role.is_system === 1
-                              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                              : "bg-blue-600 text-white hover:bg-blue-700"
-                          }`}
-                          title="Edit Role"
+                          disabled={Boolean(role.is_system)}
+                          className={`p-2 rounded-lg transition-colors ${role.is_system
+                            ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                            : "bg-blue-600 text-white hover:bg-blue-700"
+                            }`}
+                          title={role.is_system ? "System roles cannot be edited" : "Edit Role"}
                         >
                           <Edit className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteRole(role.id)}
-                          disabled={role.is_system === 1 || role.user_count > 0}
-                          className={`p-2 rounded-lg transition-colors ${
-                            role.is_system === 1 || role.user_count > 0
-                              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                              : "bg-red-600 text-white hover:bg-red-700"
-                          }`}
-                          title="Delete Role"
+                          disabled={Boolean(role.is_system) || role.user_count > 0}
+                          className={`p-2 rounded-lg transition-colors ${role.is_system || role.user_count > 0
+                            ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                            : "bg-red-600 text-white hover:bg-red-700"
+                            }`}
+                          title={Boolean(role.is_system) ? "System roles cannot be deleted" : role.user_count > 0 ? "Cannot delete role with assigned users" : "Delete Role"}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -483,7 +480,7 @@ const RoleManagement = () => {
                 onClick={handleCloseRoleModal}
               ></div>
 
-              <div className="relative bg-gray-800 rounded-lg max-w-md w-full p-6 border border-gray-700">
+              <div className="relative bg-gray-800 rounded-lg max-w-md w-full p-4 sm:p-6 border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold text-white">
                     {selectedRole ? "Edit Role" : "Create New Role"}
@@ -547,13 +544,12 @@ const RoleManagement = () => {
                       selectedRole?.is_system === 1 ||
                       loading
                     }
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${
-                      !roleForm.name.trim() ||
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${!roleForm.name.trim() ||
                       selectedRole?.is_system === 1 ||
                       loading
-                        ? "bg-blue-800 text-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
+                      ? "bg-blue-800 text-blue-300 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
                   >
                     {loading ? (
                       <>
@@ -582,7 +578,7 @@ const RoleManagement = () => {
                 onClick={handleClosePermissionModal}
               ></div>
 
-              <div className="relative bg-gray-800 rounded-lg max-w-4xl w-full p-6 border border-gray-700 max-h-[90vh] overflow-y-auto">
+              <div className="relative bg-gray-800 rounded-lg max-w-4xl w-full p-4 sm:p-6 border border-gray-700 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4 sticky top-0 bg-gray-800 pt-2 pb-4 border-b border-gray-700">
                   <div>
                     <h3 className="text-lg font-semibold text-white">
@@ -669,11 +665,10 @@ const RoleManagement = () => {
                   <button
                     onClick={handleSavePermissions}
                     disabled={loading}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${
-                      loading
-                        ? "bg-blue-800 text-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center ${loading
+                      ? "bg-blue-800 text-blue-300 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
                   >
                     {loading ? (
                       <>

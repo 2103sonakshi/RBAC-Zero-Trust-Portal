@@ -162,59 +162,7 @@ const ResourceManager = () => {
     }
   };
 
-  // Generate Demo Data
-  const handleGenerateDemoData = async () => {
-    if (!canCreate) {
-      toast.error("You don't have permission to create resources");
-      return;
-    }
 
-    const demoResources = [
-      {
-        title: "Q3 Financial Report PDF",
-        description: "Contains highly sensitive financial data, quarterly earnings, and projections. Restricted to Finance team.",
-        access_level: "RESTRICTED",
-      },
-      {
-        title: "Server Configuration Keys",
-        description: "Production database passwords and AWS access keys. Extremely sensitive.",
-        access_level: "PRIVATE",
-      },
-      {
-        title: "Patient X Medical History",
-        description: "Confidential medical diagnosis, prescription history, and doctor's notes. HIPAA compliant handling required.",
-        access_level: "RESTRICTED",
-      },
-      {
-        title: "Company Public Holiday Calendar",
-        description: "General list of all public holidays for the upcoming year.",
-        access_level: "PUBLIC",
-      }
-    ];
-
-    setActionLoading(true);
-    let successCount = 0;
-
-    try {
-      for (const res of demoResources) {
-        try {
-          await axios.post("/api/resources", res);
-          successCount++;
-        } catch (e) {
-          console.error("Failed to create demo resource:", res.title, e);
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`Successfully created ${successCount} demo resources!`);
-        fetchResources();
-      } else {
-        toast.error("Failed to create demo resources");
-      }
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   // Delete resource
   const handleDeleteResource = async (id) => {
@@ -379,15 +327,6 @@ const ResourceManager = () => {
 
             {canCreate && (
               <div className="flex gap-3">
-                <button
-                  onClick={handleGenerateDemoData}
-                  disabled={actionLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-purple-400 rounded-xl hover:bg-purple-500/30 transition-all disabled:opacity-50"
-                  title="Generate Dummy Data for Demo"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  Add Demo Data
-                </button>
                 <button
                   onClick={() => {
                     setEditingResource(null);

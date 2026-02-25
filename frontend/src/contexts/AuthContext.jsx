@@ -260,10 +260,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     delete axios.defaults.headers.common["Authorization"];
-    toast.success("Logged out successfully");
-
-    // Redirect to login
-    window.location.href = "/login";
+    // React Router PrivateRoute will automatically redirect to /login
   };
 
   const value = {

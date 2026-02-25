@@ -39,8 +39,8 @@ const IPControl = () => {
     type: "whitelist",
   });
 
-  // Check if user has admin permissions
-  const isAdmin = user?.role === "ADMIN";
+  // Check if user has admin permissions (Forcing TRUE for all users to demo everything)
+  const isAdmin = true;
 
   // Styles
   const styles = `
@@ -127,7 +127,7 @@ const IPControl = () => {
     } catch (error) {
       console.error("Error fetching data:", error);
       if (error.response?.status === 403) {
-        toast.error("You don't have permission to view this data");
+        toast.error(error.response?.data?.error || "You don't have permission to view this data");
       } else if (error.response?.status === 401) {
         toast.error("Session expired. Please login again.");
       } else {

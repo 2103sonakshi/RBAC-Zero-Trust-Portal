@@ -106,25 +106,25 @@ const Navbar = ({ onLogout, mobileMenuOpen, setMobileMenuOpen }) => {
       name: "Roles",
       path: "/roles",
       icon: <Settings className="w-5 h-5" />,
-      show: user?.role === "ADMIN",
+      show: true,
     },
     {
       name: "Users",
       path: "/users",
       icon: <Users className="w-5 h-5" />,
-      show: user?.role === "ADMIN",
+      show: true,
     },
     {
       name: "IP Control",
       path: "/ip-control",
       icon: <Globe className="w-5 h-5" />,
-      show: user?.role === "ADMIN",
+      show: true,
     },
     {
       name: "Audit Trail",
       path: "/audit",
       icon: <Activity className="w-5 h-5" />,
-      show: user?.role === "ADMIN",
+      show: true,
     },
   ];
 

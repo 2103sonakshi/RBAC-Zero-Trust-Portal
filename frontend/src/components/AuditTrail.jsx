@@ -694,15 +694,6 @@ const AuditTrail = () => {
             >
               Timeline
             </button>
-            <button
-              onClick={() => setViewMode("map")}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === "map"
-                ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white"
-                : "text-gray-400 hover:text-white"
-                }`}
-            >
-              Map View
-            </button>
           </div>
 
           {/* Date Range Selector */}
@@ -1102,56 +1093,7 @@ const AuditTrail = () => {
           </div>
         )}
 
-        {/* Map View - Enhanced */}
-        {viewMode === "map" && (
-          <div className="glass p-12 text-center animate-fade-in">
-            <div className="relative">
-              <MapPin className="h-16 w-16 text-gray-600 mx-auto mb-4" />
-              <Globe className="h-32 w-32 text-gray-700 mx-auto mb-6 opacity-50" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              IP Geolocation Map
-            </h3>
-            <p className="text-gray-400 mb-6 max-w-md mx-auto">
-              Visual representation of access attempts by geographic location
-            </p>
-            <div className="inline-flex flex-col items-center space-y-3">
-              <div className="inline-flex items-center space-x-2 px-4 py-2 bg-gray-800/50 rounded-lg">
-                <Globe className="h-5 w-5 text-blue-400" />
-                <span className="text-sm text-gray-300">
-                  {new Set(filteredLogs.map((l) => l.ip).filter(Boolean)).size}{" "}
-                  unique IPs
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div className="text-center p-3 bg-gray-800/30 rounded-lg">
-                  <p className="text-2xl font-bold text-green-400">
-                    {
-                      filteredLogs.filter((l) =>
-                        l.action?.includes("LOGIN_SUCCESS"),
-                      ).length
-                    }
-                  </p>
-                  <p className="text-xs text-gray-400">Successful Logins</p>
-                </div>
-                <div className="text-center p-3 bg-gray-800/30 rounded-lg">
-                  <p className="text-2xl font-bold text-red-400">
-                    {
-                      filteredLogs.filter((l) =>
-                        l.action?.includes("LOGIN_FAILED"),
-                      ).length
-                    }
-                  </p>
-                  <p className="text-xs text-gray-400">Failed Logins</p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-4">
-                Full IP geolocation mapping coming soon with IP2Location
-                integration
-              </p>
-            </div>
-          </div>
-        )}
+
 
         {/* Details Modal */}
         {showDetailsModal && selectedLog && (

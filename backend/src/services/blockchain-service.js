@@ -8,25 +8,23 @@ class BlockchainService {
 
   // Create first block
   createGenesisBlock() {
+    const timestamp = Date.now();
+    const data = {
+      action: "GENESIS_BLOCK",
+      description: "Initial block of the audit chain",
+      userId: "system",
+      ip: "0.0.0.0",
+    };
+
     const genesisBlock = {
       index: 0,
-      timestamp: Date.now(),
-      data: {
-        action: "GENESIS_BLOCK",
-        description: "Initial block of the audit chain",
-        userId: "system",
-        ip: "0.0.0.0",
-      },
+      timestamp: timestamp,
+      data: data,
       previousHash: "0".repeat(64), // 64 zeros
       hash: this.calculateHash(
         0,
-        Date.now(),
-        {
-          action: "GENESIS_BLOCK",
-          description: "Initial block of the audit chain",
-          userId: "system",
-          ip: "0.0.0.0",
-        },
+        timestamp,
+        data,
         "0".repeat(64),
       ),
     };
@@ -51,12 +49,19 @@ class BlockchainService {
     const index = this.chain.length;
     const timestamp = Date.now();
 
+    let safeDetails = {};
+    try {
+      safeDetails = JSON.parse(JSON.stringify(details));
+    } catch (e) {
+      safeDetails = String(details);
+    }
+
     const blockData = {
       action,
       description: this.getActionDescription(action),
       userId,
       ip,
-      details,
+      details: safeDetails,
       timestamp: new Date(timestamp).toISOString(),
     };
 

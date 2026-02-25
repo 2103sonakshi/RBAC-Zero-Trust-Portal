@@ -697,7 +697,7 @@ const Dashboard = ({ onLogout }) => {
                 </p>
               </div>
 
-              {user?.role !== "GUEST" && (
+              {true && (
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-400 rounded-xl hover:bg-green-500/30 transition-all"
@@ -768,7 +768,7 @@ const Dashboard = ({ onLogout }) => {
                         ? "No public resources available"
                         : "Create your first resource to get started"}
                   </p>
-                  {user?.role !== "GUEST" && (
+                  {true && (
                     <button
                       onClick={() => setShowCreateModal(true)}
                       className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 rounded-xl hover:bg-blue-500/30 transition-all"

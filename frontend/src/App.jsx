@@ -116,20 +116,16 @@ function AppContent() {
     [permissions, hasRole, user],
   );
 
-  const handleLogout = useCallback(async () => {
-    try {
-      // Optional: Call logout endpoint if it exists
-      await axios.post("/api/auth/logout").catch(() => {
-        // Silently fail if endpoint doesn't exist
-        console.log("Logout endpoint not available");
-      });
-    } catch (error) {
-      console.warn("Logout API call failed:", error);
-    } finally {
-      authLogout(); // Use the logout from AuthContext
-      toast.success("Logged out successfully");
-      setMobileMenuOpen(false);
-    }
+  const handleLogout = useCallback(() => {
+    // Fire the API call in the background without waiting for it
+    axios.post("/api/auth/logout").catch(() => {
+      // Silently fail if endpoint doesn't exist
+      console.log("Logout endpoint not available");
+    });
+
+    authLogout(); // Use the logout from AuthContext
+    setMobileMenuOpen(false);
+    toast.success("Logged out successfully");
   }, [authLogout]);
 
   // Loading Component

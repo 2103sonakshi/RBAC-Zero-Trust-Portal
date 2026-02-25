@@ -278,6 +278,19 @@ const IPControl = () => {
     }
   };
 
+  const handleSimulateAttack = async () => {
+    toast.loading("Simulating brute force attack...");
+    // Fire 6 invalid requests to breach the IP rate limits
+    const spamRequests = Array.from({ length: 6 }).map(() =>
+      axios.post(`${API_URL}/auth/login`, { username: "admin", password: "wrongpassword123" })
+        .catch(e => e)
+    );
+    await Promise.all(spamRequests);
+    toast.dismiss();
+    toast.error("Spam attack completed. Checking IP status...");
+    fetchData();
+  };
+
   const formatDate = (date) => {
     if (!date) return "N/A";
     return new Date(date).toLocaleString();
@@ -372,9 +385,19 @@ const IPControl = () => {
                   {/* Current IP Card */}
                   <div className="glass p-6">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-xl font-semibold text-white">
-                        Your IP Information
-                      </h2>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-semibold text-white">
+                          Your IP Information
+                        </h2>
+                        <button
+                          onClick={handleSimulateAttack}
+                          className="flex items-center gap-2 px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition-all text-sm font-medium"
+                          title="Generate failed login spam to trigger auto-blocking"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          Simulate Attack
+                        </button>
+                      </div>
                       <div
                         className={`px-3 py-1 rounded-full text-sm border ${getStatusColor(
                           myIPInfo.isBlacklisted

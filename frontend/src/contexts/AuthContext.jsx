@@ -257,8 +257,9 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: "Server error" };
       }
 
-      console.log("⚠️ True network/server error without response. Falling back to offline login.");
-      return handleOfflineLogin(username, password);
+      console.log("⚠️ True network/server error without response.");
+      toast.error("Network error. Please enable internet access to verify credentials.");
+      return { success: false, error: "Network Error" };
     }
   };
 

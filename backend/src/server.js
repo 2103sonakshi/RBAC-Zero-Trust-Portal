@@ -607,13 +607,35 @@ const ipControlMiddleware = async (req, res, next) => {
     return next();
   }
 
-  // Check if IP is blacklisted
+  // Add IP and blacklist status to request object
+  req.clientIP = ip;
   const isBlacklisted = await ipControlService.isBlacklisted(ip);
+  req.isBlacklisted = isBlacklisted;
+
   if (isBlacklisted) {
     await blockchainService.addBlock("system", "BLACKLISTED_IP_ATTEMPT", ip, {
       path: req.path,
       method: req.method,
     });
+
+    // Let them hit the login endpoint so they can attempt an admin override
+    if (req.path === "/api/auth/login") {
+      return next();
+    }
+
+    // Zero-Trust Admin Override: If they possess a valid ADMIN token, they bypass the blackout
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded.role === "ADMIN") {
+          return next();
+        }
+      } catch (err) {
+        // Token invalid or expired, continue to block
+      }
+    }
 
     return res.status(403).json({
       success: false,
@@ -621,8 +643,6 @@ const ipControlMiddleware = async (req, res, next) => {
     });
   }
 
-  // Add IP to request object
-  req.clientIP = ip;
   next();
 };
 
@@ -1168,7 +1188,16 @@ app.post("/api/auth/login", async (req, res) => {
         .json({ success: false, error: "Invalid credentials" });
     }
 
-    // Successful login
+    // If they were blacklisted but provided a non-admin valid login, REJECT them!
+    // Only Admin can punch through a blacklisted IP
+    if (req.isBlacklisted && user.role_name !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Your IP has been blocked."
+      });
+    }
+
+    // Successful login (leave the Blacklist alone so it shows in the Demo Dashboard!)
     await ipControlService.logLoginAttempt(ip, username, true, userAgent);
 
     const token = jwt.sign(

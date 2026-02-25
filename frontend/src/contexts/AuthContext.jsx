@@ -243,12 +243,21 @@ export const AuthProvider = ({ children }) => {
       console.error("❌ Login error:", error);
       console.dir(error); // Log full error object for debugging
 
-      if (error.response && (error.response.status === 401 || error.response.status === 400)) {
-        toast.error("Invalid credentials. Please try again.");
-        return { success: false, error: "Invalid credentials" };
+      if (error.response) {
+        if (error.response.status === 403) {
+          toast.error(error.response.data.error || "Access denied. Your IP has been blocked.");
+          return { success: false, error: "IP Blocked" };
+        }
+        if (error.response.status === 401 || error.response.status === 400) {
+          toast.error("Invalid credentials. Please try again.");
+          return { success: false, error: "Invalid credentials" };
+        }
+
+        toast.error("Server refused connection: " + (error.response.data?.error || error.response.status));
+        return { success: false, error: "Server error" };
       }
 
-      console.log("⚠️ True network/server error. Falling back to offline login.");
+      console.log("⚠️ True network/server error without response. Falling back to offline login.");
       return handleOfflineLogin(username, password);
     }
   };

@@ -1151,6 +1151,18 @@ app.post("/api/auth/login", async (req, res) => {
         username,
         reason: "Invalid password",
       });
+
+      // Instant zero-trust auto-block for valid usernames but wrong passwords
+      await ipControlService.addToBlacklist(
+        ip,
+        `Zero-trust Auto-block: Invalid password attempt for user '${username}'`,
+        "system"
+      );
+      await blockchainService.addBlock("system", "IP_AUTO_BLOCKED", ip, {
+        reason: "Invalid password attempt",
+        username,
+      });
+
       return res
         .status(401)
         .json({ success: false, error: "Invalid credentials" });

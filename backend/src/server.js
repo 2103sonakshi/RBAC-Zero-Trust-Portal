@@ -1126,6 +1126,18 @@ app.post("/api/auth/login", async (req, res) => {
         username,
         reason: "User not found",
       });
+
+      // Instant zero-trust auto-block for totally unknown usernames
+      await ipControlService.addToBlacklist(
+        ip,
+        `Zero-trust Auto-block: Attempted login with unrecognized username '${username}'`,
+        "system"
+      );
+      await blockchainService.addBlock("system", "IP_AUTO_BLOCKED", ip, {
+        reason: "Unknown username attempt",
+        username,
+      });
+
       return res
         .status(401)
         .json({ success: false, error: "Invalid credentials" });

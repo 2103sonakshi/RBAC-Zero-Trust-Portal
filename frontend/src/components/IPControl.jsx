@@ -279,13 +279,11 @@ const IPControl = () => {
   };
 
   const handleSimulateAttack = async () => {
-    toast.loading("Simulating brute force attack...");
-    // Fire 6 invalid requests to breach the IP rate limits
-    const spamRequests = Array.from({ length: 6 }).map(() =>
-      axios.post(`${API_URL}/auth/login`, { username: "admin", password: "wrongpassword123" })
-        .catch(e => e)
-    );
-    await Promise.all(spamRequests);
+    toast.loading("Simulating attack with unknown username...");
+    // Fire an invalid request with an unknown username to instantly trigger the zero-trust blacklist
+    try {
+      await axios.post(`${API_URL}/auth/login`, { username: "hacker_bot_99", password: "password123!" });
+    } catch (e) { }
     toast.dismiss();
     toast.error("Spam attack completed. Checking IP status...");
     fetchData();

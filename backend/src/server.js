@@ -854,17 +854,16 @@ async function initDatabase() {
 
     // USER gets specific permissions
     if (userRole) {
+      // Clear old permissions
+      await dbRun(`DELETE FROM role_permissions WHERE role_id = ?`, [userRole.id]);
+
       const userPermissions = [
         "user.read",
-        "user.update",
         "resource.create",
         "resource.read",
         "resource.update",
-        "resource.delete",
         "dashboard.view",
-        "dashboard.stats",
         "blockchain.view",
-        "blockchain.verify",
       ];
 
       for (const permName of userPermissions) {
@@ -880,11 +879,12 @@ async function initDatabase() {
 
     // GUEST gets read-only permissions
     if (guestRole) {
+      // Clear old permissions
+      await dbRun(`DELETE FROM role_permissions WHERE role_id = ?`, [guestRole.id]);
+
       const guestPermissions = [
-        "user.read",
         "resource.read",
         "dashboard.view",
-        "blockchain.view",
       ];
 
       for (const permName of guestPermissions) {
